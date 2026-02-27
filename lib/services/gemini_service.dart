@@ -21,8 +21,6 @@ class IngredientDetectionService {
 
   IngredientDetectionService({required this.apiKey});
 
-  /// Detects ingredients from an image file using Gemini Vision API
-  /// Automatically tries fallback models if primary fails
   /// Get current scan statistics (used today, remaining, reset time)
   static Future<Map<String, dynamic>> getScanStats() async {
     final prefs = await SharedPreferences.getInstance();
@@ -172,7 +170,7 @@ If no food items are visible, return: {"ingredients": []}''',
           baseUnit: 'units',
         );
       }).toList();
-    } catch (e) {
+    } catch (_) {
       // Fallback to simple comma parsing if JSON fails
       return _parseCommaSeparated(jsonText);
     }
@@ -295,7 +293,6 @@ If no food items are visible, return: {"ingredients": []}''',
       return IngredientCategory.frozen;
     }
 
-    // Map pantry-like keywords to the new granular categories
     if (_matchesAny(lower, ['canned', 'can', 'tin'])) {
       return IngredientCategory.cannedGoods;
     }
@@ -312,61 +309,6 @@ If no food items are visible, return: {"ingredients": []}''',
       return IngredientCategory.condimentsSauces;
     }
 
-    // Snacks & Extras: chips, cookies, bars, dips, jerky, seaweed, etc.
-    if (_matchesAny(lower, [
-      'chip',
-      'chips',
-      'crisps',
-      'pretzel',
-      'pretzels',
-      'popcorn',
-      'tortilla',
-      'puff',
-      'puffs',
-      'cheetos',
-      'doritos',
-      'cracker',
-      'crackers',
-      'cookie',
-      'cookies',
-      'biscuit',
-      'biscuits',
-      'candy',
-      'gummy',
-      'brownie',
-      'brownies',
-      'donut',
-      'donuts',
-      'pastry',
-      'pastries',
-      'granola',
-      'granola bar',
-      'protein bar',
-      'energy bar',
-      'trail mix',
-      'fruit leather',
-      'dried fruit',
-      'jerky',
-      'slim jim',
-      'hummus',
-      'salsa',
-      'guacamole',
-      'pita',
-      'pita chips',
-      'pork rind',
-      'pork rinds',
-      'seaweed',
-      'seaweed snack',
-      'nut',
-      'nuts',
-      'peanut',
-      'almond',
-      'cashew',
-      'walnut',
-    ])) {
-      return IngredientCategory.snacksExtras;
-    }
-
     if (_matchesAny(lower, [
       'rice',
       'pasta',
@@ -380,12 +322,35 @@ If no food items are visible, return: {"ingredients": []}''',
       return IngredientCategory.grainsLegumes;
     }
 
-    if (_matchesAny(lower, ['tomato', 'broth', 'stock'])) {
-      return IngredientCategory.cannedGoods;
-    }
-
-    // Fallback to grains & legumes for general pantry items
     return IngredientCategory.grainsLegumes;
+  }
+
+  IngredientCategory _guessCategory(String name) {
+    final lower = name.toLowerCase();
+
+    if (_matchesAny(lower, ['tomato', 'onion', 'garlic', 'lettuce', 'spinach'])) {
+      return IngredientCategory.produce;
+    }
+    if (_matchesAny(lower, ['milk', 'cheese', 'yogurt', 'butter', 'egg'])) {
+      return IngredientCategory.dairyRefrigerated;
+    }
+    if (_matchesAny(lower, ['chicken', 'beef', 'pork', 'fish', 'shrimp'])) {
+      return IngredientCategory.proteins;
+    }
+    if (_matchesAny(lower, ['salt', 'pepper', 'spice', 'seasoning'])) {
+      return IngredientCategory.spicesSeasonings;
+    }
+    if (_matchesAny(lower, ['flour', 'sugar', 'baking', 'vanilla'])) {
+      return IngredientCategory.baking;
+    }
+    return IngredientCategory.grainsLegumes;
+  }
+
+  bool _matchesAny(String text, List<String> keywords) {
+    for (final k in keywords) {
+      if (text.contains(k)) return true;
+    }
+    return false;
   }
 
   String _getMimeType(String path) {
@@ -409,241 +374,5 @@ If no food items are visible, return: {"ingredients": []}''',
     if (text.isEmpty) return text;
     return text[0].toUpperCase() + text.substring(1).toLowerCase();
   }
-
-  IngredientCategory _guessCategory(String name) {
-    final lower = name.toLowerCase();
-
-    // Produce: Fresh fruits and vegetables
-    if (_matchesAny(lower, [
-      'tomato',
-      'onion',
-      'garlic',
-      'pepper',
-      'carrot',
-      'lettuce',
-      'spinach',
-      'broccoli',
-      'cucumber',
-      'celery',
-      'potato',
-      'mushroom',
-      'zucchini',
-      'eggplant',
-      'cabbage',
-      'kale',
-      'apple',
-      'banana',
-      'orange',
-      'lemon',
-      'lime',
-      'avocado',
-      'berry',
-      'grape',
-      'melon',
-      'mango',
-      'pineapple',
-      'vegetable',
-      'fruit',
-      'salad',
-      'green',
-      'squash',
-      'radish',
-      'beet',
-    ])) {
-      return IngredientCategory.produce;
-    }
-
-    // Dairy & Refrigerated: Milk, cheeses, eggs, yogurt
-    if (_matchesAny(lower, [
-      'milk',
-      'cheese',
-      'butter',
-      'yogurt',
-      'cream',
-      'sour cream',
-      'cottage',
-      'mozzarella',
-      'cheddar',
-      'parmesan',
-      'ricotta',
-      'feta',
-      'brie',
-      'egg',
-      'refrigerated',
-      'cream cheese',
-    ])) {
-      return IngredientCategory.dairyRefrigerated;
-    }
-
-    // Proteins: Chicken, beef, shrimp, salmon (includes tofu/tempeh)
-    if (_matchesAny(lower, [
-      'chicken',
-      'beef',
-      'pork',
-      'fish',
-      'salmon',
-      'tuna',
-      'shrimp',
-      'bacon',
-      'sausage',
-      'turkey',
-      'lamb',
-      'steak',
-      'meat',
-      'tofu',
-      'tempeh',
-      'seafood',
-      'crab',
-      'lobster',
-      'ham',
-      'duck',
-      'anchovies',
-    ])) {
-      return IngredientCategory.proteins;
-    }
-
-    // Spices & Seasonings: Salt, pepper, cumin, dried herbs
-    if (_matchesAny(lower, [
-      'salt',
-      'pepper',
-      'cumin',
-      'basil',
-      'cilantro',
-      'parsley',
-      'mint',
-      'ginger',
-      'herb',
-      'spice',
-      'seasoning',
-      'paprika',
-      'oregano',
-      'thyme',
-      'rosemary',
-      'garlic powder',
-      'onion powder',
-      'chili',
-      'cayenne',
-    ])) {
-      return IngredientCategory.spicesSeasonings;
-    }
-
-    // Baking: Flour, sugar, yeast, vanilla extract
-    if (_matchesAny(lower, [
-      'flour',
-      'sugar',
-      'yeast',
-      'vanilla',
-      'extract',
-      'baking powder',
-      'baking soda',
-      'cocoa',
-      'chocolate',
-      'cinnamon',
-      'nutmeg',
-      'brown sugar',
-    ])) {
-      return IngredientCategory.baking;
-    }
-
-    // Frozen: Frozen vegetables, fruits, meals
-    if (_matchesAny(lower, ['frozen', 'freeze', 'ice cream', 'popsicle'])) {
-      return IngredientCategory.frozen;
-    }
-
-    // Snacks & Extras heuristic (fall-back for items like chips, bars, dips)
-    if (_matchesAny(lower, [
-      'chip',
-      'chips',
-      'crisps',
-      'pretzel',
-      'pretzels',
-      'popcorn',
-      'tortilla',
-      'puff',
-      'puffs',
-      'cheetos',
-      'doritos',
-      'cracker',
-      'crackers',
-      'cookie',
-      'cookies',
-      'biscuit',
-      'biscuits',
-      'candy',
-      'gummy',
-      'brownie',
-      'brownies',
-      'donut',
-      'donuts',
-      'pastry',
-      'pastries',
-      'granola',
-      'granola bar',
-      'protein bar',
-      'energy bar',
-      'trail mix',
-      'fruit leather',
-      'dried fruit',
-      'jerky',
-      'slim jim',
-      'hummus',
-      'salsa',
-      'guacamole',
-      'pita',
-      'pita chips',
-      'pork rind',
-      'pork rinds',
-      'seaweed',
-      'seaweed snack',
-      'nut',
-      'nuts',
-      'peanut',
-      'almond',
-      'cashew',
-      'walnut',
-    ])) {
-      return IngredientCategory.snacksExtras;
-    }
-
-    // Map pantry-like keywords to the new granular categories
-    if (_matchesAny(lower, ['canned', 'can', 'tin'])) {
-      return IngredientCategory.cannedGoods;
-    }
-
-    if (_matchesAny(lower, [
-      'oil',
-      'olive oil',
-      'vinegar',
-      'soy sauce',
-      'sauce',
-      'honey',
-      'maple',
-    ])) {
-      return IngredientCategory.condimentsSauces;
-    }
-
-    if (_matchesAny(lower, [
-      'rice',
-      'pasta',
-      'grain',
-      'lentil',
-      'chickpea',
-      'bean',
-      'noodle',
-      'bread',
-    ])) {
-      return IngredientCategory.grainsLegumes;
-    }
-
-    if (_matchesAny(lower, ['tomato', 'broth', 'stock'])) {
-      return IngredientCategory.cannedGoods;
-    }
-
-    // Fallback to grains & legumes for general pantry items
-    return IngredientCategory.grainsLegumes;
-  }
-
-  bool _matchesAny(String text, List<String> keywords) {
-    return keywords.any((keyword) => text.contains(keyword));
-  }
 }
+

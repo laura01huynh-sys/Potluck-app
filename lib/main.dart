@@ -14,18 +14,15 @@ import 'dart:math';
 import 'dart:ui' as ui;
 import 'dart:async';
 import 'package:http/http.dart' as http;
-import 'services/ingredient_detection_service.dart';
-import 'services/edamam_recipe_service.dart';
-import 'services/recipe_instruction_service.dart';
-import 'services/recipe_ingredient_service.dart';
-import 'services/recipe_data_service.dart';
-import 'services/recipe_image_file_service.dart';
+import 'services/gemini_service.dart';
+import 'services/edamam_service.dart';
+import 'other/recipe_data_service.dart';
+import 'other/recipe_image_file_service.dart';
 import 'services/firebase_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
-import 'config/gemini_config.dart';
-import 'config/app_colors.dart';
-import 'utils/format_utils.dart';
+import 'core/constants.dart';
+import 'core/format.dart';
 
 // ================= BACKGROUND JSON ENCODING =================
 List<String> _encodeIngredientsInBackground(
@@ -1533,24 +1530,24 @@ class _PotluckAppState extends State<PotluckApp> {
       home: _checkingSession
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : _isAuthenticated && _needsChefIdentity
-              ? ChefIdentityScreen(
-                  onComplete: () {
-                    setState(() => _needsChefIdentity = false);
-                  },
-                )
-              : _isAuthenticated
-                  ? const MainNavigation()
-                  : WelcomeScreen(
-                      onSignUpSuccess: () {
-                        setState(() {
-                          _isAuthenticated = true;
-                          _needsChefIdentity = true;
-                        });
-                      },
-                      onSignInSuccess: () {
-                        setState(() => _isAuthenticated = true);
-                      },
-                    ),
+          ? ChefIdentityScreen(
+              onComplete: () {
+                setState(() => _needsChefIdentity = false);
+              },
+            )
+          : _isAuthenticated
+          ? const MainNavigation()
+          : WelcomeScreen(
+              onSignUpSuccess: () {
+                setState(() {
+                  _isAuthenticated = true;
+                  _needsChefIdentity = true;
+                });
+              },
+              onSignInSuccess: () {
+                setState(() => _isAuthenticated = true);
+              },
+            ),
     );
   }
 }
@@ -1559,6 +1556,7 @@ class _PotluckAppState extends State<PotluckApp> {
 class WelcomeScreen extends StatefulWidget {
   /// Called when sign-up succeeds — app shows Chef Identity step next.
   final VoidCallback? onSignUpSuccess;
+
   /// Called when sign-in succeeds — app goes to Home.
   final VoidCallback? onSignInSuccess;
 
@@ -1622,10 +1620,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     if (msg.contains('Email rate limit exceeded')) {
       return 'Too many attempts. Please wait a moment and try again.';
     }
-    if (msg.contains('Connection timed out') || msg.contains('TimeoutException')) {
+    if (msg.contains('Connection timed out') ||
+        msg.contains('TimeoutException')) {
       return 'Connection timed out. Check your network and try again.';
     }
-    return msg.replaceFirst('AuthException: ', '').replaceFirst('Exception: ', '');
+    return msg
+        .replaceFirst('AuthException: ', '')
+        .replaceFirst('Exception: ', '');
   }
 
   Future<void> _submit() async {
@@ -1643,12 +1644,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       if (_isSignUp) {
         await FirebaseService.signUp(email, password).timeout(
           const Duration(seconds: 15),
-          onTimeout: () => throw Exception('Connection timed out. Check your network.'),
+          onTimeout: () =>
+              throw Exception('Connection timed out. Check your network.'),
         );
       } else {
         await FirebaseService.signIn(email, password).timeout(
           const Duration(seconds: 15),
-          onTimeout: () => throw Exception('Connection timed out. Check your network.'),
+          onTimeout: () =>
+              throw Exception('Connection timed out. Check your network.'),
         );
       }
       if (!mounted) return;
@@ -1698,7 +1701,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 if (isSignUp) ...[
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 28,
+                      horizontal: 24,
+                    ),
                     decoration: BoxDecoration(
                       color: kDeepForestGreen,
                       borderRadius: BorderRadius.circular(20),
@@ -1726,15 +1732,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                             letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Get cooking in seconds',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 14,
-                            color: Colors.white.withOpacity(0.9),
                           ),
                         ),
                       ],
@@ -1825,7 +1822,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   },
                   child: Text.rich(
                     TextSpan(
-                      text: isSignUp ? 'Already have an account? ' : "Don't have an account? ",
+                      text: isSignUp
+                          ? 'Already have an account? '
+                          : "Don't have an account? ",
                       style: TextStyle(color: kSoftSlateGray, fontSize: 14),
                       children: [
                         TextSpan(
@@ -1913,7 +1912,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 _obscurePassword ? Icons.visibility_off : Icons.visibility,
                 size: 20,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
             filled: true,
             fillColor: isSignUp ? kBoneCreame.withOpacity(0.4) : Colors.white,
@@ -1995,13 +1995,28 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
 
   String? _friendlyError(Object e) {
     final msg = e.toString();
-    if (msg.contains('Invalid login credentials')) return 'Invalid email or password. Please try again.';
-    if (msg.contains('User already registered')) return 'An account with this email already exists. Try signing in.';
-    if (msg.contains('Password should be at least')) return 'Password must be at least 6 characters.';
-    if (msg.contains('Unable to validate email')) return 'Please enter a valid email address.';
-    if (msg.contains('Email rate limit exceeded')) return 'Too many attempts. Please wait a moment and try again.';
-    if (msg.contains('Connection timed out') || msg.contains('TimeoutException')) return 'Connection timed out. Check your network and try again.';
-    return msg.replaceFirst('AuthException: ', '').replaceFirst('Exception: ', '');
+    if (msg.contains('Invalid login credentials')) {
+      return 'Invalid email or password. Please try again.';
+    }
+    if (msg.contains('User already registered')) {
+      return 'An account with this email already exists. Try signing in.';
+    }
+    if (msg.contains('Password should be at least')) {
+      return 'Password must be at least 6 characters.';
+    }
+    if (msg.contains('Unable to validate email')) {
+      return 'Please enter a valid email address.';
+    }
+    if (msg.contains('Email rate limit exceeded')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+    if (msg.contains('Connection timed out') ||
+        msg.contains('TimeoutException')) {
+      return 'Connection timed out. Check your network and try again.';
+    }
+    return msg
+        .replaceFirst('AuthException: ', '')
+        .replaceFirst('Exception: ', '');
   }
 
   Future<void> _submit() async {
@@ -2011,11 +2026,15 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
       setState(() => _error = 'Email and password are required.');
       return;
     }
-    setState(() { _error = null; _loading = true; });
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
     try {
       await FirebaseService.signUp(email, password).timeout(
         const Duration(seconds: 15),
-        onTimeout: () => throw Exception('Connection timed out. Check your network.'),
+        onTimeout: () =>
+            throw Exception('Connection timed out. Check your network.'),
       );
       if (!mounted) return;
       setState(() => _loading = false);
@@ -2024,9 +2043,17 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
         widget.onSuccess?.call();
         return;
       }
-      setState(() => _error = 'Account created! Check your email to confirm, then sign in.');
+      setState(() {
+        _error =
+            'Account created! Check your email to confirm, then sign in.';
+      });
     } catch (e) {
-      if (mounted) setState(() { _error = _friendlyError(e); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = _friendlyError(e);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -2060,7 +2087,11 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
               children: [
                 const Text(
                   'Join Potluck',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kCharcoal),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: kCharcoal,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -2076,10 +2107,6 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'Get cooking in seconds',
-                    style: TextStyle(fontSize: 14, color: kSoftSlateGray),
-                  ),
                   const SizedBox(height: 24),
                   if (_error != null)
                     Container(
@@ -2093,10 +2120,20 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                          Icon(
+                            Icons.error_outline,
+                            color: Colors.red.shade700,
+                            size: 20,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 13)),
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -2110,9 +2147,25 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
                       prefixIcon: const Icon(Icons.email_outlined, size: 20),
                       filled: true,
                       fillColor: kBoneCreame.withOpacity(0.4),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kMutedGold.withOpacity(0.3))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kMutedGold.withOpacity(0.3))),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kDeepForestGreen, width: 1.5)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: kMutedGold.withOpacity(0.3),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: kMutedGold.withOpacity(0.3),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: kDeepForestGreen,
+                          width: 1.5,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -2125,14 +2178,37 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline, size: 20),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, size: 20),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          size: 20,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                       filled: true,
                       fillColor: kBoneCreame.withOpacity(0.4),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kMutedGold.withOpacity(0.3))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kMutedGold.withOpacity(0.3))),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kDeepForestGreen, width: 1.5)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: kMutedGold.withOpacity(0.3),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: kMutedGold.withOpacity(0.3),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: kDeepForestGreen,
+                          width: 1.5,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -2144,11 +2220,27 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
                       style: FilledButton.styleFrom(
                         backgroundColor: kMutedGold,
                         foregroundColor: kDeepForestGreen,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                       child: _loading
-                          ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: kDeepForestGreen))
-                          : const Text('Join', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: kDeepForestGreen)),
+                          ? SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: kDeepForestGreen,
+                              ),
+                            )
+                          : const Text(
+                              'Join',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: kDeepForestGreen,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -2159,7 +2251,13 @@ class _SignUpSheetContentState extends State<_SignUpSheetContent> {
                         text: 'Already have an account? ',
                         style: TextStyle(color: kSoftSlateGray, fontSize: 14),
                         children: [
-                          TextSpan(text: 'Sign In', style: const TextStyle(color: kDeepForestGreen, fontWeight: FontWeight.bold)),
+                          TextSpan(
+                            text: 'Sign In',
+                            style: const TextStyle(
+                              color: kDeepForestGreen,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -2190,15 +2288,49 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
   String? _error;
 
   static const _potluckAdjectives = [
-    'Spicy', 'Golden', 'Crispy', 'Savory', 'Smoky', 'Zesty', 'Tangy',
-    'Sweet', 'Toasty', 'Sizzling', 'Fresh', 'Rustic', 'Velvet', 'Herby',
-    'Mellow', 'Peppered', 'Roasted', 'Honeyed', 'Buttery', 'Wild',
+    'Spicy',
+    'Golden',
+    'Crispy',
+    'Savory',
+    'Smoky',
+    'Zesty',
+    'Tangy',
+    'Sweet',
+    'Toasty',
+    'Sizzling',
+    'Fresh',
+    'Rustic',
+    'Velvet',
+    'Herby',
+    'Mellow',
+    'Peppered',
+    'Roasted',
+    'Honeyed',
+    'Buttery',
+    'Wild',
   ];
 
   static const _potluckNouns = [
-    'Basil', 'Gnocchi', 'Sage', 'Thyme', 'Mango', 'Truffle', 'Paprika',
-    'Saffron', 'Olive', 'Fennel', 'Clove', 'Nutmeg', 'Rosemary', 'Cinnamon',
-    'Maple', 'Pecan', 'Walnut', 'Fig', 'Cardamom', 'Lavender',
+    'Basil',
+    'Gnocchi',
+    'Sage',
+    'Thyme',
+    'Mango',
+    'Truffle',
+    'Paprika',
+    'Saffron',
+    'Olive',
+    'Fennel',
+    'Clove',
+    'Nutmeg',
+    'Rosemary',
+    'Cinnamon',
+    'Maple',
+    'Pecan',
+    'Walnut',
+    'Fig',
+    'Cardamom',
+    'Lavender',
   ];
 
   @override
@@ -2247,7 +2379,10 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
       setState(() => _error = 'Username cannot contain spaces.');
       return;
     }
-    setState(() { _error = null; _saving = true; });
+    setState(() {
+      _error = null;
+      _saving = true;
+    });
     try {
       final uid = FirebaseService.currentUser?.uid;
       if (uid == null) return;
@@ -2261,9 +2396,15 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
       if (mounted) {
         final msg = e.toString();
         if (msg.contains('duplicate') || msg.contains('unique')) {
-          setState(() { _error = 'That username is taken. Try another!'; _saving = false; });
+          setState(() {
+            _error = 'That username is taken. Try another!';
+            _saving = false;
+          });
         } else {
-          setState(() { _error = msg.replaceFirst('PostgrestException: ', ''); _saving = false; });
+          setState(() {
+            _error = msg.replaceFirst('PostgrestException: ', '');
+            _saving = false;
+          });
         }
       }
     }
@@ -2277,7 +2418,10 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
-              32, 48, 32, MediaQuery.of(context).viewInsets.bottom + 32,
+              32,
+              48,
+              32,
+              MediaQuery.of(context).viewInsets.bottom + 32,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2290,13 +2434,19 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                     color: kDeepForestGreen.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.restaurant_menu, color: kDeepForestGreen, size: 40),
+                  child: const Icon(
+                    Icons.restaurant_menu,
+                    color: kDeepForestGreen,
+                    size: 40,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 const Text(
                   'Create your Chef Identity',
                   style: TextStyle(
-                    fontFamily: 'Lora', fontSize: 26, fontWeight: FontWeight.bold,
+                    fontFamily: 'Lora',
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
                     color: kDeepForestGreen,
                   ),
                 ),
@@ -2304,7 +2454,11 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                 Text(
                   'Pick a username and display name for your profile.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontFamily: 'Inter', fontSize: 14, color: kSoftSlateGray),
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    color: kSoftSlateGray,
+                  ),
                 ),
                 const SizedBox(height: 32),
 
@@ -2318,7 +2472,13 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.red.shade200),
                     ),
-                    child: Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 13)),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
 
                 // Username / handle
@@ -2328,9 +2488,16 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                   decoration: InputDecoration(
                     labelText: 'Username',
                     prefixText: '@',
-                    prefixStyle: const TextStyle(color: kDeepForestGreen, fontWeight: FontWeight.w600),
+                    prefixStyle: const TextStyle(
+                      color: kDeepForestGreen,
+                      fontWeight: FontWeight.w600,
+                    ),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.casino, color: kMutedGold, size: 22),
+                      icon: const Icon(
+                        Icons.casino,
+                        color: kMutedGold,
+                        size: 22,
+                      ),
                       tooltip: 'Shuffle',
                       onPressed: _shuffle,
                     ),
@@ -2338,15 +2505,22 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: kMutedGold.withOpacity(0.3)),
+                      borderSide: BorderSide(
+                        color: kMutedGold.withOpacity(0.3),
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: kMutedGold.withOpacity(0.3)),
+                      borderSide: BorderSide(
+                        color: kMutedGold.withOpacity(0.3),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: kDeepForestGreen, width: 1.5),
+                      borderSide: const BorderSide(
+                        color: kDeepForestGreen,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                 ),
@@ -2372,15 +2546,22 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: kMutedGold.withOpacity(0.3)),
+                      borderSide: BorderSide(
+                        color: kMutedGold.withOpacity(0.3),
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: kMutedGold.withOpacity(0.3)),
+                      borderSide: BorderSide(
+                        color: kMutedGold.withOpacity(0.3),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: kDeepForestGreen, width: 1.5),
+                      borderSide: const BorderSide(
+                        color: kDeepForestGreen,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                 ),
@@ -2402,16 +2583,25 @@ class _ChefIdentityScreenState extends State<ChefIdentityScreen> {
                     onPressed: _saving ? null : _save,
                     style: FilledButton.styleFrom(
                       backgroundColor: kDeepForestGreen,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     child: _saving
                         ? const SizedBox(
-                            height: 22, width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text(
                             "Let's Cook!",
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                   ),
                 ),
@@ -2441,10 +2631,13 @@ class _MainNavigationState extends State<MainNavigation> {
   Set<String> _selectedIngredientIds =
       {}; // Track selected ingredients for recipe search
   Timer? _pantrySaveTimer;
+
   /// authorId -> list of userIds who follow that author (for Followers count, local-only)
   Map<String, List<String>> _authorFollowers = {};
+
   /// When signed in to Firebase, follower count from profiles.follower_count
   int? _firebaseFollowerCount;
+
   /// When signed in, set of profile ids the current user follows (for quick-add check)
   Set<String> _firebaseFollowingIds = {};
 
@@ -2717,7 +2910,10 @@ class _MainNavigationState extends State<MainNavigation> {
       if (followersJson != null) {
         final decoded = jsonDecode(followersJson) as Map<String, dynamic>;
         authorFollowers = decoded.map(
-          (k, v) => MapEntry(k, List<String>.from((v as List).map((e) => e.toString()))),
+          (k, v) => MapEntry(
+            k,
+            List<String>.from((v as List).map((e) => e.toString())),
+          ),
         );
       }
     } catch (_) {}
@@ -2980,8 +3176,13 @@ class _MainNavigationState extends State<MainNavigation> {
             });
           },
           onFollowAuthor: (authorId) async {
-            if (authorId == null || authorId.isEmpty || authorId == _userProfile.userId) return;
-            if (FirebaseService.isSignedIn && FirebaseService.isFirebaseUserId(authorId)) {
+            if (authorId == null ||
+                authorId.isEmpty ||
+                authorId == _userProfile.userId) {
+              return;
+            }
+            if (FirebaseService.isSignedIn &&
+                FirebaseService.isFirebaseUserId(authorId)) {
               await FirebaseService.follow(authorId);
               setState(() => _firebaseFollowingIds.add(authorId));
               return;
@@ -2995,9 +3196,16 @@ class _MainNavigationState extends State<MainNavigation> {
             });
           },
           isFollowingAuthor: (id) {
-            if (id == null) return false;
-            if (_authorFollowers[id]?.contains(_userProfile.userId) ?? false) return true;
-            if (FirebaseService.isFirebaseUserId(id) && _firebaseFollowingIds.contains(id)) return true;
+            if (id == null) {
+              return false;
+            }
+            if (_authorFollowers[id]?.contains(_userProfile.userId) ?? false) {
+              return true;
+            }
+            if (FirebaseService.isFirebaseUserId(id) &&
+                _firebaseFollowingIds.contains(id)) {
+              return true;
+            }
             return false;
           },
         );
@@ -3028,7 +3236,10 @@ class _MainNavigationState extends State<MainNavigation> {
           onProfileUpdated: _onProfileUpdated,
           onAddCommunityReview: _addCommunityReview,
           communityReviews: _communityReviews,
-          followerCount: _firebaseFollowerCount ?? _authorFollowers[_userProfile.userId]?.length ?? 0,
+          followerCount:
+              _firebaseFollowerCount ??
+              _authorFollowers[_userProfile.userId]?.length ??
+              0,
         );
       default:
         return const SizedBox.shrink();
@@ -6580,10 +6791,7 @@ class _RecipeFeedScreenState extends State<RecipeFeedScreen> {
               // Extra-thin Clear All chip with fixed height
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
               margin: const EdgeInsets.only(right: 8),
-              constraints: const BoxConstraints(
-                minHeight: 16,
-                maxHeight: 16,
-              ),
+              constraints: const BoxConstraints(minHeight: 16, maxHeight: 16),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: Colors.grey.withOpacity(0.2),
@@ -7444,10 +7652,10 @@ class _RecipeFeedScreenState extends State<RecipeFeedScreen> {
                           ),
                         ),
                       ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: _buildFilterChips(),
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: _buildFilterChips(),
+                      ),
                     ],
                   ),
                 ),
@@ -7906,7 +8114,9 @@ class _RecipeFeedScreenState extends State<RecipeFeedScreen> {
                           authorId: recipe['authorId'] as String?,
                           isDiscoverFeed: _selectedFeed == 'discover',
                           onFollowAuthor: widget.onFollowAuthor,
-                          isFollowing: widget.isFollowingAuthor(recipe['authorId'] as String?),
+                          isFollowing: widget.isFollowingAuthor(
+                            recipe['authorId'] as String?,
+                          ),
                           onDelete: (id) {
                             setState(() {
                               _userRecipes.removeWhere((r) => r['id'] == id);
@@ -7997,6 +8207,7 @@ class RecipeCard extends StatefulWidget {
   final bool isDiscoverFeed;
   final void Function(String? authorId)? onFollowAuthor;
   final bool isFollowing;
+
   /// When null: 18 for For You, 14 for Discover. Pass 14 for Profile saved/cooked.
   final double? titleFontSize;
 
@@ -8138,8 +8349,9 @@ class _RecipeCardState extends State<RecipeCard> {
       }
 
       // Update in user recipes cache
-      final userIndex = _RecipeFeedScreenState._userRecipes
-          .indexWhere((r) => r['id'] == recipeId);
+      final userIndex = _RecipeFeedScreenState._userRecipes.indexWhere(
+        (r) => r['id'] == recipeId,
+      );
       if (userIndex != -1) {
         _RecipeFeedScreenState._userRecipes[userIndex]['imageUrl'] =
             localImagePath;
@@ -8529,7 +8741,9 @@ class _RecipeCardState extends State<RecipeCard> {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontFamily: 'Playfair Display',
-                                  fontSize: widget.titleFontSize ?? (widget.isDiscoverFeed ? 14 : 18),
+                                  fontSize:
+                                      widget.titleFontSize ??
+                                      (widget.isDiscoverFeed ? 14 : 18),
                                   fontWeight: FontWeight.bold,
                                   color: kDeepForestGreen,
                                   height: 1.2,
@@ -8553,13 +8767,16 @@ class _RecipeCardState extends State<RecipeCard> {
                                       CircleAvatar(
                                         radius: 16,
                                         backgroundColor: kDeepForestGreen,
-                                        backgroundImage: widget.authorAvatar != null
+                                        backgroundImage:
+                                            widget.authorAvatar != null
                                             ? NetworkImage(widget.authorAvatar!)
                                             : null,
                                         child: widget.authorAvatar == null
                                             ? Text(
-                                                widget.authorName?.isNotEmpty == true
-                                                    ? widget.authorName![0].toUpperCase()
+                                                widget.authorName?.isNotEmpty ==
+                                                        true
+                                                    ? widget.authorName![0]
+                                                          .toUpperCase()
                                                     : 'U',
                                                 style: const TextStyle(
                                                   color: Colors.white,
@@ -8575,12 +8792,18 @@ class _RecipeCardState extends State<RecipeCard> {
                                           right: -8,
                                           child: GestureDetector(
                                             onTap: () {
-                                              if (widget.onFollowAuthor != null && !_quickAdded) {
-                                                widget.onFollowAuthor!(widget.authorId);
+                                              if (widget.onFollowAuthor !=
+                                                      null &&
+                                                  !_quickAdded) {
+                                                widget.onFollowAuthor!(
+                                                  widget.authorId,
+                                                );
                                                 setState(() {
                                                   _quickAdded = true;
                                                 });
-                                              } else if (widget.onFollowAuthor == null) {
+                                              } else if (widget
+                                                      .onFollowAuthor ==
+                                                  null) {
                                                 setState(() {
                                                   _quickAdded = !_quickAdded;
                                                 });
@@ -8623,7 +8846,9 @@ class _RecipeCardState extends State<RecipeCard> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontFamily: 'Playfair Display',
-                            fontSize: widget.titleFontSize ?? (widget.isDiscoverFeed ? 14 : 18),
+                            fontSize:
+                                widget.titleFontSize ??
+                                (widget.isDiscoverFeed ? 14 : 18),
                             fontWeight: FontWeight.bold,
                             color: kDeepForestGreen,
                             height: 1.2,
@@ -14687,7 +14912,9 @@ class _HubScreenState extends State<HubScreen> {
             ListTile(
               leading: const Icon(Icons.logout, color: kDeepForestGreen),
               title: const Text('Sign Out'),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               onTap: () async {
                 Navigator.pop(ctx);
                 await FirebaseService.signOut();
@@ -14696,8 +14923,13 @@ class _HubScreenState extends State<HubScreen> {
             const Divider(height: 1),
             ListTile(
               leading: Icon(Icons.delete_forever, color: Colors.red.shade700),
-              title: Text('Delete Account', style: TextStyle(color: Colors.red.shade700)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              title: Text(
+                'Delete Account',
+                style: TextStyle(color: Colors.red.shade700),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _confirmDeleteAccount(context);
@@ -14714,7 +14946,10 @@ class _HubScreenState extends State<HubScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kBoneCreame,
-        title: const Text('Delete Account?', style: TextStyle(color: kDeepForestGreen)),
+        title: const Text(
+          'Delete Account?',
+          style: TextStyle(color: kDeepForestGreen),
+        ),
         content: const Text(
           'This will permanently delete your account, recipes, and followers. This action cannot be undone.',
         ),

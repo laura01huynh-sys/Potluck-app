@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../config/gemini_config.dart';
+import '../core/constants.dart';
 
 /// Consolidated recipe data service powered by Gemini.
 ///
@@ -379,7 +379,7 @@ Return ONLY the JSON object. No explanations.''';
         jsonEncode(measurements),
       );
     } catch (e) {
-      // Ignore cache errors
+      // ignore
     }
   }
 
@@ -394,11 +394,11 @@ Return ONLY the JSON object. No explanations.''';
         jsonEncode(instructions),
       );
     } catch (e) {
-      // Ignore cache errors
+      // ignore
     }
   }
 
-  /// Clear all caches for a specific recipe
+  /// Clear the cached measurements and instructions for a specific recipe
   static Future<void> clearCache(String recipeId) async {
     _measurementsCache.remove(recipeId);
     _instructionsCache.remove(recipeId);
@@ -407,7 +407,7 @@ Return ONLY the JSON object. No explanations.''';
     await prefs.remove('$_instructionsCachePrefix$recipeId');
   }
 
-  /// Clear all recipe data caches
+  /// Clear ALL recipe data caches (measurements + instructions)
   static Future<void> clearAllCaches() async {
     _measurementsCache.clear();
     _instructionsCache.clear();
@@ -423,7 +423,7 @@ Return ONLY the JSON object. No explanations.''';
   }
 }
 
-/// Data class for recipe measurements and instructions
+/// Value object combining measurements and instructions from Gemini
 class RecipeData {
   final Map<String, String> measurements;
   final List<String> instructions;
@@ -434,16 +434,3 @@ class RecipeData {
   });
 }
 
-/// Helper to deduplicate ingredients by name (case-insensitive)
-List<String> deduplicateIngredients(List<String> ingredients) {
-  final seen = <String>{};
-  final result = <String>[];
-  for (final ingredient in ingredients) {
-    final normalized = ingredient.toLowerCase().trim();
-    if (!seen.contains(normalized)) {
-      seen.add(normalized);
-      result.add(ingredient);
-    }
-  }
-  return result;
-}
