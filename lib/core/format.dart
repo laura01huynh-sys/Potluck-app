@@ -34,12 +34,11 @@ String decimalToFraction(double value) {
 
 (double, String) convertToMetric(double value, String unit) {
   const c = {
-    'cup': (240.0, 'ml'), 'cups': (240.0, 'ml'), 'tbsp': (15.0, 'ml'), 'tablespoon': (15.0, 'ml'), 'tablespoons': (15.0, 'ml'),
-    'tsp': (5.0, 'ml'), 'teaspoon': (5.0, 'ml'), 'teaspoons': (5.0, 'ml'), 'fl oz': (30.0, 'ml'), 'fluid ounce': (30.0, 'ml'),
-    'fluid ounces': (30.0, 'ml'), 'quart': (946.0, 'ml'), 'quarts': (946.0, 'ml'), 'qt': (946.0, 'ml'), 'pint': (473.0, 'ml'),
-    'pints': (473.0, 'ml'), 'pt': (473.0, 'ml'), 'gallon': (3785.0, 'ml'), 'gallons': (3785.0, 'ml'), 'gal': (3785.0, 'ml'),
-    'oz': (28.35, 'g'), 'ounce': (28.35, 'g'), 'ounces': (28.35, 'g'), 'lb': (453.6, 'g'), 'lbs': (453.6, 'g'),
-    'pound': (453.6, 'g'), 'pounds': (453.6, 'g'),
+    'cup': (240.0, 'ml'), 'cups': (240.0, 'ml'),
+    'tbsp': (15.0, 'ml'), 'tablespoon': (15.0, 'ml'), 'tablespoons': (15.0, 'ml'),
+    'tsp': (5.0, 'ml'), 'teaspoon': (5.0, 'ml'), 'teaspoons': (5.0, 'ml'),
+    'oz': (28.35, 'g'), 'ounce': (28.35, 'g'), 'ounces': (28.35, 'g'),
+    'lb': (453.6, 'g'), 'lbs': (453.6, 'g'), 'pound': (453.6, 'g'), 'pounds': (453.6, 'g'),
   };
   final u = unit.toLowerCase().trim();
   if (u == '°f' || u == 'f') return ((value - 32) * 5 / 9, '°C');
@@ -52,40 +51,78 @@ String decimalToFraction(double value) {
 
 String abbreviateUnit(String unit) {
   const m = {
-    'tablespoons': 'tbsp', 'tablespoon': 'tbsp', 'tbsp': 'tbsp', 'teaspoons': 'tsp', 'teaspoon': 'tsp', 'tsp': 'tsp',
-    'cups': 'cup', 'cup': 'cup', 'fl oz': 'fl oz', 'floz': 'fl oz', 'quarts': 'qt', 'quart': 'qt', 'qt': 'qt',
-    'pints': 'pt', 'pint': 'pt', 'pt': 'pt', 'gallons': 'gal', 'gallon': 'gal', 'gal': 'gal', 'liters': 'L',
-    'liter': 'L', 'l': 'L', 'milliliters': 'mL', 'milliliter': 'mL', 'ml': 'mL', 'mL': 'mL', 'ounces': 'oz',
-    'ounce': 'oz', 'oz': 'oz', 'pounds': 'lb', 'pound': 'lb', 'lb': 'lb', 'lbs': 'lb', 'grams': 'g', 'gram': 'g',
-    'g': 'g', 'kilograms': 'kg', 'kilogram': 'kg', 'kg': 'kg',
+    'tablespoon': 'tbsp', 'tablespoons': 'tbsp',
+    'teaspoon': 'tsp', 'teaspoons': 'tsp',
+    'ounce': 'oz', 'ounces': 'oz',
+    'pound': 'lb', 'pounds': 'lb', 'lbs': 'lb',
+    'cloves': 'clove',
+    'pieces': 'pc', 'piece': 'pc',
   };
   final l = unit.toLowerCase().trim();
-  return m[l] ?? (unit.isEmpty ? '' : unit);
+  return m[l] ?? unit;
 }
 
 class RecipeUtils {
-  static const _desc = {'large', 'medium', 'small', 'extra-large', 'xl', 'whole', 'each', 'ea', 'fresh', 'ripe', 'raw',
-    'cooked', 'dried', 'frozen', 'chopped', 'diced', 'sliced', 'minced', 'grated', 'shredded', 'peeled', 'pitted',
-    'halved', 'quartered', 'crushed', 'ground', 'packed', 'heaping', 'level'};
-  static const _units = {'tbsp', 'tsp', 'cup', 'fl oz', 'qt', 'pt', 'gal', 'l', 'ml', 'oz', 'lb', 'g', 'kg',
-    'pinch', 'dash', 'drop', 'clove', 'slice', 'stick', 'serving', 'pc'};
+  static const _desc = {
+    'large', 'medium', 'small', 'whole', 'each', 'ea',
+    'chopped', 'diced', 'sliced', 'minced',
+  };
 
-  static String cleanMeasurement(String m) {
-    final t = m.trim();
-    if (t.isEmpty) return '';
-    final p = t.split(RegExp(r'\s+'));
+  static const _units = {
+    'tbsp', 'tsp', 'cup', 'oz', 'lb', 'g', 'kg', 'ml', 'l',
+    'clove', 'pinch', 'pc',
+  };
+
+  /// Unified measurement normalizer
+  static String normalizeAndClean(String ingredient, String measurement) {
+    final ing = ingredient.toLowerCase().trim();
+    final meas = measurement.trim();
+    if (meas.isEmpty) return '';
+
+    // Garlic → ensure "clove/cloves"
+    if (ing.contains('garlic')) {
+      final numMatch = RegExp(r'^([\d./]+(?:\s+[\d./]+)?)').firstMatch(meas);
+      if (numMatch != null) {
+        final num = numMatch.group(1)!.trim();
+        if (meas.toLowerCase().contains('clove')) return meas;
+        final numVal = double.tryParse(num.replaceAll('/', '.')) ?? 1;
+        return numVal == 1 ? '1 clove' : '$num cloves';
+      }
+      return meas;
+    }
+
+    // Generic cleaning
+    final p = meas.split(RegExp(r'\s+'));
     if (p.isEmpty) return '';
-    var q = p[0], s = 1;
+
+    var q = p[0];
+    var s = 1;
+
+    // Support mixed numbers "2 1/2"
     if (p.length >= 2 && RegExp(r'^\d+$').hasMatch(p[0]) && RegExp(r'^[\d./]+$').hasMatch(p[1])) {
       q = '${p[0]} ${p[1]}';
       s = 2;
     }
+
     if (!RegExp(r'^[\d./]+(?:\s+[\d./]+)?$').hasMatch(q)) return '';
-    final u = p.length > s ? p.sublist(s).join(' ') : '';
-    if (u.isEmpty) return q;
-    final l = u.toLowerCase().trim();
-    if (_desc.contains(l) || l == '<unit>' || l.startsWith('<')) return q;
-    final c = abbreviateUnit(l).toLowerCase();
-    return _units.contains(c) ? '$q ${abbreviateUnit(l)}' : q;
+    if (p.length <= s) return q;
+
+    // Strip descriptors from unit
+    final unitTokens = <String>[];
+    for (var i = s; i < p.length; i++) {
+      final tok = p[i].toLowerCase();
+      if (tok.isEmpty || _desc.contains(tok)) continue;
+      unitTokens.add(p[i]);
+    }
+
+    if (unitTokens.isEmpty) return q;
+
+    final canon = abbreviateUnit(unitTokens.join(' '));
+    if (!_units.contains(canon.toLowerCase())) return q;
+
+    return '$q $canon';
   }
+
+  /// Backwards-compatible wrapper
+  static String cleanMeasurement(String m) => normalizeAndClean('', m);
 }

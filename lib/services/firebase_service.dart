@@ -1,6 +1,23 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Result of [FirebaseService.syncProfileWithAuth]. Gives UI what it needs to update profile + follower state.
+class SyncProfileResult {
+  final String userId;
+  final String userName;
+  final String? avatarUrl;
+  final int followerCount;
+  final Set<String> followingIds;
+
+  const SyncProfileResult({
+    required this.userId,
+    required this.userName,
+    this.avatarUrl,
+    required this.followerCount,
+    required this.followingIds,
+  });
+}
+
 /// Firebase Auth + Firestore helpers for profiles, recipes, follows.
 /// Firestore collections:
 ///   - profiles/{uid}  (username, display_name, avatar_url, made_count, shared_count, follower_count)
@@ -49,6 +66,59 @@ class FirebaseService {
   /// Sign out.
   static Future<void> signOut() async {
     await _auth.signOut();
+  }
+
+  /// Returns a user-friendly message for auth errors (sign in, sign up, etc.).
+  /// Use in WelcomeScreen, SignUpSheetContent, Chef Identity, password reset, etc.
+  static String? friendlyAuthError(Object e) {
+    final msg = e.toString();
+    if (msg.contains('Invalid login credentials')) {
+      return 'Invalid email or password. Please try again.';
+    }
+    if (msg.contains('User already registered')) {
+      return 'An account with this email already exists. Try signing in.';
+    }
+    if (msg.contains('Password should be at least')) {
+      return 'Password must be at least 6 characters.';
+    }
+    if (msg.contains('Unable to validate email')) {
+      return 'Please enter a valid email address.';
+    }
+    if (msg.contains('Email rate limit exceeded')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+    if (msg.contains('Connection timed out') ||
+        msg.contains('TimeoutException')) {
+      return 'Connection timed out. Check your network and try again.';
+    }
+    return msg
+        .replaceFirst('AuthException: ', '')
+        .replaceFirst('Exception: ', '');
+  }
+
+  /// Result of syncing current auth state with Firestore profile (for UI).
+  /// Use in MainNavigation / any widget that holds UserProfile and follower state.
+  static Future<SyncProfileResult?> syncProfileWithAuth() async {
+    final user = currentUser;
+    if (user == null) return null;
+    try {
+      final profile = await getProfile(user.uid);
+      if (profile == null) return null;
+      final username =
+          profile['username'] as String? ?? user.email ?? 'User';
+      final avatarUrl = profile['avatar_url'] as String?;
+      final followerCount = profile['follower_count'] as int? ?? 0;
+      final followingIds = await getFollowingIds();
+      return SyncProfileResult(
+        userId: user.uid,
+        userName: username,
+        avatarUrl: avatarUrl,
+        followerCount: followerCount,
+        followingIds: followingIds,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Fetch profile for [userId]. Returns null if not found.

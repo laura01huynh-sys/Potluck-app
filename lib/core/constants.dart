@@ -40,6 +40,7 @@ const Color kBoneCreame = Color.fromARGB(255, 239, 229, 203);
 const Color kDarkerCreame = Color.fromARGB(255, 233, 228, 207);
 const Color kDeepForestGreen = Color.fromARGB(255, 51, 93, 80);
 const Color kMutedGold = Color.fromARGB(255, 203, 179, 98);
+const Color kSageGreen = Color.fromARGB(255, 129, 166, 148);
 const Color kSoftSlateGray = Color(0xFF4F6D7A);
 const Color kSoftTerracotta = Color(0xFFE2725B);
 const Color kCharcoal = Color(0xFF333333);
